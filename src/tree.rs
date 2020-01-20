@@ -3,77 +3,49 @@ pub mod tree {
   use std::cmp::PartialEq;
   use std::collections::HashMap;
   use std::hash::{Hash, Hasher};
-
-  #[derive(Debug, Copy, Clone)]
-  pub struct Id(pub u32);
-
-  impl Hash for Id {
-    fn hash<H>(&self, state: &mut H)
-    where
-      H: Hasher,
-    {
-      let Id(unpacked_id) = self;
-      unpacked_id.hash(state);
-    }
-  }
-
-  impl PartialEq for Id {
-    fn eq(&self, other: &Self) -> bool {
-      self.0 == other.0
-    }
-  }
-  impl Eq for Id {}
-
-  #[derive(Debug)]
-  pub struct IdGenerator {
-    nextId: Id,
-  }
-
-  impl IdGenerator {
-    pub fn new() -> IdGenerator {
-      IdGenerator { nextId: Id(0) }
-    }
-
-    pub fn next(&mut self) -> Id {
-      let Id(unpacked_id) = self.nextId;
-      self.nextId = Id(unpacked_id + 1);
-      return Id(unpacked_id);
-    }
-  }
+  use uuid::Uuid;
 
   #[derive(Debug)]
   pub struct ChildrenNode {
-    pub id: Id,
-    pub parent: Id,
-    pub children: Vec<Id>,
+    pub id: Uuid,
+    pub parent: Uuid,
+    pub children: Vec<Uuid>,
   }
 
   impl ChildrenNode {
-    pub fn new(id: Id, parent: Id) -> ChildrenNode {
+    pub fn new_inner(id: Uuid, parent: Uuid) -> ChildrenNode {
       ChildrenNode {
         id,
         parent,
         children: Vec::new(),
       }
     }
+
+    pub fn new(id: Uuid, parent: Uuid) -> Node {
+      Node::ChildrenNode(ChildrenNode::new_inner(id, parent))
+    }
   }
 
   #[derive(Debug)]
   pub struct LeftRightNode {
-    pub id: Id,
-    pub parent: Id,
-    pub left: Option<Id>,
-    pub right: Option<Id>,
+    pub id: Uuid,
+    pub parent: Uuid,
+    pub left: Option<Uuid>,
+    pub right: Option<Uuid>,
   }
 
   impl LeftRightNode {
-    pub fn new(id: Id, parent: Id) -> LeftRightNode {
+    pub fn new_inner(id: Uuid, parent: Uuid) -> LeftRightNode {
       LeftRightNode {
         id,
         parent,
         left: None,
         right: None,
       }
+    }
+
+    pub fn new(id: Uuid, parent: Uuid) -> Node {
+      Node::LeftRightNode(LeftRightNode::new_inner(id, parent))
     }
   }
 
@@ -115,8 +87,7 @@ pub mod tree {
 
   #[derive(Debug)]
   pub struct NodeTree {
-    id_generator: IdGenerator,
-    node_map: HashMap<Id, Node>,
+    node_map: HashMap<Uuid, Node>,
   }
 
   #[derive(Debug)]
@@ -128,19 +99,18 @@ pub mod tree {
   impl NodeTree {
     pub fn new() -> NodeTree {
       NodeTree {
-        id_generator: IdGenerator::new(),
         node_map: HashMap::new(),
       }
     }
 
-    pub fn make_root(&mut self) -> Id {
-      let id = self.id_generator.next();
-      let node = Node::ChildrenNode(ChildrenNode::new(id, id));
+    pub fn make_root(&mut self) -> Uuid {
+      let id = Uuid::new_v4();
+      let node = ChildrenNode::new(id, id);
       self.node_map.insert(id, node);
       id
     }
 
-    pub fn get_node(&self, id: Id) -> Option<&Node> {
+    pub fn get_node(&self, id: Uuid) -> Option<&Node> {
       if let Some(node) = self.node_map.get(&id) {
         Some(node)
       } else {
@@ -148,7 +118,7 @@ pub mod tree {
       }
     }
 
-    pub fn get_node_mut(&mut self, id: Id) -> Option<&mut Node> {
+    pub fn get_node_mut(&mut self, id: Uuid) -> Option<&mut Node> {
       if let Some(node) = self.node_map.get_mut(&id) {
         Some(node)
       } else {
@@ -158,10 +128,10 @@ pub mod tree {
 
     pub fn make_node(
       &mut self,
-      parent_id: Id,
-      factory: Box<dyn Fn(Id, &mut Node) -> Node>,
-    ) -> Result<Id, Error> {
-      let id = self.id_generator.next();
+      parent_id: Uuid,
+      factory: Box<dyn Fn(Uuid, &mut Node) -> Node>,
+    ) -> Result<Uuid, Error> {
+      let id = Uuid::new_v4();
       if let Some(parent) = self.get_node_mut(parent_id) {
         let node = factory(id, parent);
         self.node_map.insert(id, node);
@@ -184,12 +154,12 @@ mod tests {
     let child_1_id = node_tree.make_node(root_id, Box::new(move |id, parent| {
       let parent_inner = parent.get_inner_mut::<ChildrenNode>().unwrap();
       parent_inner.children.push(id);
-      Node::LeftRightNode(LeftRightNode::new(id, parent_inner.id))
+      LeftRightNode::new(id, parent_inner.id)
     }));
     let child_2_id = node_tree.make_node(root_id, Box::new(move |id, parent| {
       let parent_inner = parent.get_inner_mut::<ChildrenNode>().unwrap();
       parent_inner.children.push(id);
-      Node::LeftRightNode(LeftRightNode::new(id, parent_inner.id))
+      LeftRightNode::new(id, parent_inner.id)
     }));
     println!("root_id={:?} child_1_id={:?} child_2_id={:?}", root_id, child_1_id, child_2_id);
     println!("root_node {:?}", node_tree.get_node(root_id))
